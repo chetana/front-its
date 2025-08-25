@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test ITS Service</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test ITS Payment Gateway</h1>
+        <p>Test des fonctionnalités de base sans Vue.js</p>
+        
+        <div>
+            <button onclick="testXmlGeneration()">Test Génération XML</button>
+            <button onclick="testXmlParsing()">Test Parsing XML</button>
+            <button onclick="testValidation()">Test Validation</button>
+            <button onclick="clearResults()">Effacer</button>
+        </div>
+        
+        <div id="results"></div>
+    </div>
+
+    <script>
+        // Données de test
+        const testData = {
+            Amount: 12000,
+            CountryCode: 'FRA',
+            CurrencyCode: 'EUR',
+            CV2AVSControl: 'C',
+            PageLanguage: 'FR',
+            PageLocale: 'FR',
+            Reference: 'TEST-ORDER-006',
+            SupplierID: 'djust_test'
+        };
+
+        const sampleXmlResponse = `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+    <s:Body>
+        <GeneratePaypageTokenResponse xmlns="http://tempuri.org/">
+            <GeneratePaypageTokenResult xmlns:a="http://schemas.datacontract.org/2004/07/ITS.PaymentGatewayDataContract" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+                <a:Amount>12000</a:Amount>
+                <a:CountryCode>FRA</a:CountryCode>
+                <a:CurrencyCode>EUR</a:CurrencyCode>
+                <a:PageLanguage>FR</a:PageLanguage>
+                <a:PageLocale>FR</a:PageLocale>
+                <a:Reference>TEST-ORDER-006</a:Reference>
+                <a:ResultDescription>Token generated Successfully</a:ResultDescription>
+                <a:SupplierID>djust_test</a:SupplierID>
+                <a:Token>250825145343281</a:Token>
+            </GeneratePaypageTokenResult>
+        </GeneratePaypageTokenResponse>
+    </s:Body>
+</s:Envelope>`;
+
+        // Fonctions utilitaires
+        function generateSoapXml(paymentData) {
+            return `<?xml version="1.0" encoding="utf-8"?>
+<x:Envelope xmlns:x="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/" xmlns:its="http://schemas.datacontract.org/2004/07/ITS.PaymentGatewayDataContract">
+    <x:Body>
+        <tem:GeneratePaypageToken>
+            <tem:objPaypageRequestResponse>
+                <its:Amount>${paymentData.Amount}</its:Amount>
+                <its:CountryCode>${paymentData.CountryCode}</its:CountryCode>
+                <its:CurrencyCode>${paymentData.CurrencyCode}</its:CurrencyCode>
+                <its:CV2AVSControl>${paymentData.CV2AVSControl}</its:CV2AVSControl>
+                <its:PageLanguage>${paymentData.PageLanguage}</its:PageLanguage>
+                <its:PageLocale>${paymentData.PageLocale}</its:PageLocale>
+                <its:Reference>${paymentData.Reference}</its:Reference>
+                <its:SupplierID>${paymentData.SupplierID}</its:SupplierID>
+            </tem:objPaypageRequestResponse>
+        </tem:GeneratePaypageToken>
+    </x:Body>
+</x:Envelope>`;
+        }
+
+        function parseTokenResponse(xmlResponse) {
+            try {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
+                
+                const parserError = xmlDoc.querySelector('parsererror');
+                if (parserError) {
+                    throw new Error(`Erreur de parsing XML: ${parserError.textContent}`);
+                }
+                
+                const getElementValue = (tagName) => {
+                    const selectors = [
+                        `a\\:${tagName}`,
+                        `${tagName}`,
+                        `*[localName="${tagName}"]`
+                    ];
+                    
+                    for (const selector of selectors) {
+                        const element = xmlDoc.querySelector(selector);
+                        if (element) {
+                            return element.textContent.trim();
+                        }
+                    }
+                    return null;
+                };
+                
+                const responseData = {
+                    Amount: parseInt(getElementValue('Amount')) || 0,
+                    CountryCode: getElementValue('CountryCode') || '',
+                    CurrencyCode: getElementValue('CurrencyCode') || '',
+                    PageLanguage: getElementValue('PageLanguage') || '',
+                    PageLocale: getElementValue('PageLocale') || '',
+                    Reference: getElementValue('Reference') || '',
+                    ResultDescription: getElementValue('ResultDescription') || '',
+                    SupplierID: getElementValue('SupplierID') || '',
+                    Token: getElementValue('Token') || ''
+                };
+                
+                if (!responseData.Token) {
+                    throw new Error('Token non trouvé dans la réponse');
+                }
+                
+                return responseData;
+                
+            } catch (error) {
+                throw new Error(`Erreur lors du parsing: ${error.message}`);
+            }
+        }
+
+        function validatePaymentData(paymentData) {
+            const errors = [];
+            
+            if (!paymentData) {
+                return { isValid: false, errors: ['Données de paiement manquantes'] };
+            }
+            
+            if (!paymentData.Amount || paymentData.Amount <= 0) {
+                errors.push('Le montant doit être supérieur à 0');
+            }
+            
+            if (!paymentData.CountryCode || paymentData.CountryCode.length !== 3) {
+                errors.push('Le code pays doit contenir exactement 3 caractères');
+            }
+            
+            if (!paymentData.CurrencyCode || paymentData.CurrencyCode.length !== 3) {
+                errors.push('Le code devise doit contenir exactement 3 caractères');
+            }
+            
+            if (!paymentData.Reference || paymentData.Reference.trim().length === 0) {
+                errors.push('La référence de commande est requise');
+            }
+            
+            if (!paymentData.SupplierID || paymentData.SupplierID.trim().length === 0) {
+                errors.push('L\'ID fournisseur est requis');
+            }
+            
+            const validCV2AVSControls = ['C', 'A', 'N'];
+            if (paymentData.CV2AVSControl && !validCV2AVSControls.includes(paymentData.CV2AVSControl)) {
+                errors.push('Contrôle CV2/AVS invalide (doit être C, A ou N)');
+            }
+            
+            return {
+                isValid: errors.length === 0,
+                errors
+            };
+        }
+
+        // Fonctions de test
+        function testXmlGeneration() {
+            try {
+                const xml = generateSoapXml(testData);
+                addResult('✅ Test Génération XML - SUCCÈS', xml, 'success');
+            } catch (error) {
+                addResult('❌ Test Génération XML - ERREUR', error.message, 'error');
+            }
+        }
+
+        function testXmlParsing() {
+            try {
+                const result = parseTokenResponse(sampleXmlResponse);
+                addResult('✅ Test Parsing XML - SUCCÈS', JSON.stringify(result, null, 2), 'success');
+                
+                // Test de l'URL de paiement
+                const paymentUrl = `https://ecommerce.its-connect.net/PayPage/Token/${result.SupplierID}/${result.Token}`;
+                addResult('🔗 URL de paiement générée', paymentUrl, 'success');
+            } catch (error) {
+                addResult('❌ Test Parsing XML - ERREUR', error.message, 'error');
+            }
+        }
+
+        function testValidation() {
+            try {
+                // Test avec données valides
+                const validResult = validatePaymentData(testData);
+                addResult('✅ Test Validation (données valides)', JSON.stringify(validResult, null, 2), 'success');
+                
+                // Test avec données invalides
+                const invalidData = { ...testData, Amount: -100, CountryCode: 'FR' };
+                const invalidResult = validatePaymentData(invalidData);
+                addResult('⚠️ Test Validation (données invalides)', JSON.stringify(invalidResult, null, 2), 'error');
+            } catch (error) {
+                addResult('❌ Test Validation - ERREUR', error.message, 'error');
+            }
+        }
+
+        function addResult(title, content, type = '') {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = `<strong>${title}</strong>\n\n${content}`;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        // Test automatique au chargement
+        window.onload = function() {
+            addResult('🚀 Tests ITS Payment Gateway', 'Cliquez sur les boutons pour tester les différentes fonctionnalités.', 'success');
+        };
+    </script>
+</body>
+</html>
