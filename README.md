@@ -1,189 +1,146 @@
-# 🏦 Front-ITS - Interface Vue 3 pour ITS Payment Gateway
+# Front-ITS Payment Gateway
 
-Cette application Vue 3 permet de générer des tokens de paiement via l'API ITS et d'afficher l'interface de paiement dans un iframe.
+Application Vue.js pour l'intégration avec la passerelle de paiement ITS.
 
-## 🚀 Fonctionnalités
+## 🚀 Démarrage rapide
 
-- **Formulaire de génération de token** : Interface utilisateur pour saisir les paramètres de paiement
-- **Appel API SOAP** : Communication avec l'API ITS via requêtes SOAP/XML
-- **Parsing automatique** : Extraction automatique du token depuis la réponse XML
-- **Interface de paiement** : Affichage de l'iframe ITS pour effectuer le paiement
-- **Logs de débogage** : Suivi détaillé des opérations pour le développement
-- **Gestion d'erreurs** : Gestion complète des erreurs réseau et API
-
-## 📋 Prérequis
-
-- Node.js 16+ 
-- npm ou yarn
-
-## 🛠️ Installation
-
+### Option 1: Serveur unifié avec Vite intégré (Recommandé)
 ```bash
-# Installer les dépendances
-npm install
-
-# Ou avec yarn
-yarn install
+./dev-vite.sh
 ```
+- Un seul serveur sur le port 3001
+- Hot Module Replacement activé
+- Proxy ITS intégré
+- Callbacks de paiement en temps réel
 
-## 🏃‍♂️ Lancement
-
+### Option 2: Serveur unifié avec frontend pré-construit
 ```bash
-# Mode développement
-npm run dev
-
-# Ou avec yarn
-yarn dev
+./dev-unified.sh
 ```
+- Un seul serveur sur le port 3001
+- Frontend pré-construit (plus rapide)
+- Proxy ITS intégré
+- Callbacks de paiement en temps réel
 
-L'application sera accessible sur `http://localhost:3000`
-
-## 📦 Build de production
-
+### Option 3: Développement séparé (2 serveurs)
 ```bash
-# Build pour la production
-npm run build
+npm run dev:full
+```
+- Serveur Vite sur le port 3000
+- Serveur Express sur le port 3001
+- Nécessite les deux serveurs
 
-# Prévisualiser le build
-npm run preview
+## 🔧 Scripts disponibles
+
+- `npm run dev` - Serveur Vite uniquement (port 3000)
+- `npm run server` - Serveur Express uniquement (port 3001)
+- `npm run server:dev` - Serveur Express avec nodemon
+- `npm run dev:full` - Les deux serveurs en parallèle
+- `npm run build` - Construction du frontend
+- `npm run preview` - Aperçu de la version construite
+
+## 🌐 URLs importantes
+
+Quand le serveur fonctionne sur le port 3001 :
+
+- **Application** : http://localhost:3001/
+- **Health Check** : http://localhost:3001/api/health
+- **Proxy ITS** : http://localhost:3001/api/its
+- **Callbacks de paiement** :
+  - Succès : http://localhost:3001/payment/success
+  - Erreur : http://localhost:3001/payment/error
+  - Callback : http://localhost:3001/payment/callback
+  - Post-failure : http://localhost:3001/payment/post-failure
+
+## 🔍 Résolution des problèmes
+
+### Erreur CORS lors de la génération de token
+
+1. **Vérifiez que le serveur fonctionne** :
+   ```bash
+   curl http://localhost:3001/api/health
+   ```
+
+2. **Redémarrez avec le serveur unifié** :
+   ```bash
+   # Arrêtez tous les serveurs (Ctrl+C)
+   ./dev-vite.sh
+   ```
+
+3. **Testez la connectivité** :
+   - Utilisez le bouton "Test de Connectivité" dans l'interface
+   - Vérifiez les logs dans la console du navigateur
+
+### Le bouton "Générer le token" ne fonctionne pas
+
+1. **Vérifiez les logs du serveur** dans le terminal
+2. **Ouvrez la console du navigateur** (F12) pour voir les erreurs
+3. **Testez la connectivité** avec le bouton dédié
+4. **Redémarrez le serveur** :
+   ```bash
+   ./dev-simple.sh
+   ```
+
+### ⏳ Timeout lors de la génération de token
+
+Le serveur ITS peut prendre jusqu'à **60 secondes** pour répondre :
+
+1. **Soyez patient** - L'interface affiche des messages de progression
+2. **Ne fermez pas la page** pendant la génération
+3. **Vérifiez les logs** dans l'interface pour voir l'état de la requête
+4. **Si timeout persistant** :
+   ```bash
+   # Testez la connectivité directe
+   curl -I https://itspgw.its-connect.net/Service.svc
+   
+   # Redémarrez le serveur
+   ./dev-simple.sh
+   ```
+
+### Port déjà utilisé
+
+Si le port 3001 est occupé :
+```bash
+# Trouver le processus
+lsof -i :3001
+
+# Tuer le processus
+kill -9 <PID>
+
+# Ou changer le port
+PORT=3002 npm run server:dev
 ```
 
-## 🔧 Configuration
+## 📋 Fonctionnalités
 
-### Paramètres par défaut
+- ✅ Génération de tokens de paiement ITS
+- ✅ Interface utilisateur intuitive
+- ✅ Gestion automatique des erreurs CORS
+- ✅ Callbacks de paiement en temps réel
+- ✅ Logs de débogage détaillés
+- ✅ Test de connectivité intégré
+- ✅ Remplissage automatique des URLs
+- ✅ WebSocket pour les notifications temps réel
 
-L'application est préconfigurée avec les valeurs suivantes :
-
-- **Montant** : 12000 (120.00 EUR)
-- **Code Pays** : FRA
-- **Code Devise** : EUR
-- **Contrôle CV2/AVS** : C
-- **Langue** : FR
-- **Locale** : FR
-- **Référence** : TEST-ORDER-006
-- **ID Fournisseur** : djust_test
-
-### API ITS
-
-- **URL** : `https://itspgw.its-connect.net/Service.svc`
-- **Action SOAP** : `http://tempuri.org/IPaymentGateway/GeneratePaypageToken`
-- **URL de paiement** : `https://ecommerce.its-connect.net/PayPage/Token/{SupplierID}/{Token}`
-
-## 🎯 Utilisation
-
-1. **Remplir le formulaire** : Ajustez les paramètres de paiement selon vos besoins
-2. **Générer le token** : Cliquez sur "Générer le Token" pour appeler l'API ITS
-3. **Visualiser le résultat** : Le token généré s'affiche avec les détails de la transaction
-4. **Effectuer le paiement** : Utilisez l'iframe pour procéder au paiement
-5. **Nouvelle transaction** : Cliquez sur "Nouvelle Transaction" pour recommencer
-
-## 🔍 Débogage
-
-L'application inclut une section de logs de débogage qui affiche :
-
-- Les données envoyées à l'API
-- La réponse XML brute
-- Le token extrait
-- L'URL de paiement générée
-- Les erreurs éventuelles
-
-## 📝 Structure du projet
+## 🛠️ Architecture
 
 ```
-front-its/
-├── src/
-│   ├── App.vue              # Composant principal
-│   ├── main.js              # Point d'entrée
-│   └── services/
-│       └── itsService.js    # Service pour l'API ITS
-├── index.html               # Template HTML
-├── package.json             # Dépendances et scripts
-├── vite.config.js          # Configuration Vite
-└── README.md               # Documentation
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Frontend      │    │   Express        │    │   ITS Payment   │
+│   Vue.js        │◄──►│   Proxy Server   │◄──►│   Gateway       │
+│   (Port 3000)   │    │   (Port 3001)    │    │   (HTTPS)       │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                              │
+                              ▼
+                       ┌──────────────────┐
+                       │   WebSocket      │
+                       │   Callbacks      │
+                       └──────────────────┘
 ```
 
-## 🛡️ Gestion des erreurs
+## 📝 Notes de développement
 
-L'application gère plusieurs types d'erreurs :
-
-- **Erreurs de validation** : Vérification des champs requis
-- **Erreurs réseau** : Problèmes de connexion à l'API
-- **Erreurs HTTP** : Codes d'erreur du serveur (404, 500, etc.)
-- **Erreurs de parsing** : Problèmes lors de l'analyse de la réponse XML
-- **Timeouts** : Délai d'attente dépassé (30 secondes)
-
-## 🔒 Sécurité et CORS
-
-⚠️ **Important** : Cette application effectue des requêtes cross-origin vers l'API ITS. En cas de problèmes CORS en développement, vous pouvez :
-
-1. Utiliser un proxy de développement
-2. Désactiver temporairement CORS dans votre navigateur (développement uniquement)
-3. Configurer un serveur proxy côté backend
-
-## 🎨 Personnalisation
-
-### Styles
-
-L'application utilise CSS moderne avec :
-- Flexbox et CSS Grid
-- Variables CSS pour les couleurs
-- Design responsive
-- Animations et transitions
-
-### Composants
-
-Le code est structuré de manière modulaire :
-- `App.vue` : Interface utilisateur principale
-- `itsService.js` : Logique métier et appels API
-
-## 🧪 Test de l'intégration
-
-Pour tester l'intégration :
-
-1. Lancez l'application en mode développement
-2. Utilisez les valeurs par défaut ou modifiez-les
-3. Vérifiez les logs de débogage pour suivre le processus
-4. Testez avec différents montants et références
-
-## 📞 Support
-
-En cas de problème :
-
-1. Vérifiez les logs de débogage dans l'application
-2. Consultez la console du navigateur pour les erreurs détaillées
-3. Vérifiez la connectivité réseau vers l'API ITS
-4. Assurez-vous que les paramètres (SupplierID, etc.) sont corrects
-
-## 🔄 Workflow de paiement
-
-```mermaid
-graph TD
-    A[Formulaire] --> B[Validation]
-    B --> C[Génération XML SOAP]
-    C --> D[Appel API ITS]
-    D --> E[Parsing réponse XML]
-    E --> F[Extraction token]
-    F --> G[Affichage iframe paiement]
-```
-
-## 📊 Exemple de réponse ITS
-
-```xml
-<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
-    <s:Body>
-        <GeneratePaypageTokenResponse xmlns="http://tempuri.org/">
-            <GeneratePaypageTokenResult xmlns:a="http://schemas.datacontract.org/2004/07/ITS.PaymentGatewayDataContract">
-                <a:Amount>12000</a:Amount>
-                <a:CountryCode>FRA</a:CountryCode>
-                <a:CurrencyCode>EUR</a:CurrencyCode>
-                <a:PageLanguage>FR</a:PageLanguage>
-                <a:PageLocale>FR</a:PageLocale>
-                <a:Reference>TEST-ORDER-006</a:Reference>
-                <a:ResultDescription>Token generated Successfully</a:ResultDescription>
-                <a:SupplierID>djust_test</a:SupplierID>
-                <a:Token>250825145343281</a:Token>
-            </GeneratePaypageTokenResult>
-        </GeneratePaypageTokenResponse>
-    </s:Body>
-</s:Envelope>
-```
+- Le proxy Express gère les problèmes CORS avec l'API ITS
+- Les callbacks de paiement sont stockés en mémoire et diffusés via WebSocket
+- Le serveur peut fonctionner avec ou sans Vite middleware
+- Les logs détaillés aident au débogage des problèmes de connectivité

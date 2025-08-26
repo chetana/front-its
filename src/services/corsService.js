@@ -11,6 +11,27 @@ const ITS_SOAP_ACTION = 'http://tempuri.org/IPaymentGateway/GeneratePaypageToken
  * @returns {string} - XML SOAP formaté
  */
 function generateSoapXml(paymentData) {
+  // Construire les champs URL optionnels
+  const urlFields = []
+  
+  if (paymentData.OnCompletionURL && paymentData.OnCompletionURL.trim()) {
+    urlFields.push(`                <its:OnCompletionURL>${paymentData.OnCompletionURL}</its:OnCompletionURL>`)
+  }
+  
+  if (paymentData.OnErrorURL && paymentData.OnErrorURL.trim()) {
+    urlFields.push(`                <its:OnErrorURL>${paymentData.OnErrorURL}</its:OnErrorURL>`)
+  }
+  
+  if (paymentData.PostbackResultURL && paymentData.PostbackResultURL.trim()) {
+    urlFields.push(`                <its:PostbackResultURL>${paymentData.PostbackResultURL}</its:PostbackResultURL>`)
+  }
+  
+  if (paymentData.PostFailure && paymentData.PostFailure.trim()) {
+    urlFields.push(`                <its:PostFailure>${paymentData.PostFailure}</its:PostFailure>`)
+  }
+  
+  const urlFieldsXml = urlFields.length > 0 ? '\n' + urlFields.join('\n') : ''
+
   return `<?xml version="1.0" encoding="utf-8"?>
 <x:Envelope xmlns:x="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/" xmlns:its="http://schemas.datacontract.org/2004/07/ITS.PaymentGatewayDataContract">
     <x:Body>
@@ -23,7 +44,7 @@ function generateSoapXml(paymentData) {
                 <its:PageLanguage>${paymentData.PageLanguage}</its:PageLanguage>
                 <its:PageLocale>${paymentData.PageLocale}</its:PageLocale>
                 <its:Reference>${paymentData.Reference}</its:Reference>
-                <its:SupplierID>${paymentData.SupplierID}</its:SupplierID>
+                <its:SupplierID>${paymentData.SupplierID}</its:SupplierID>${urlFieldsXml}
             </tem:objPaypageRequestResponse>
         </tem:GeneratePaypageToken>
     </x:Body>
@@ -48,22 +69,31 @@ export async function generatePaymentTokenWithFallback(paymentData) {
       'Cache-Control': 'no-cache'
     },
     data: soapXml,
-    timeout: 30000
+    timeout: 30000 // 30 secondes suffisent puisque ITS répond rapidement
   }
 
-  // Méthode 1: Essayer avec le proxy Vite
+  // Méthode 1: Essayer avec le proxy Express
   try {
-    console.log('🔄 Tentative avec proxy Vite...')
+    console.log('🔄 Tentative avec proxy Express...')
+    console.log('📤 URL utilisée:', PROXY_API_URL)
+    console.log('📤 Données SOAP (premiers 200 chars):', soapXml.substring(0, 200) + '...')
+    
     const response = await axios({
       ...baseConfig,
       url: PROXY_API_URL
     })
     
-    console.log('✅ Succès avec proxy Vite')
+    console.log('✅ Succès avec proxy Express')
+    console.log('📥 Réponse reçue (premiers 200 chars):', response.data.substring(0, 200) + '...')
     return response.data
     
   } catch (proxyError) {
-    console.warn('⚠️ Échec avec proxy Vite:', proxyError.message)
+    console.warn('⚠️ Échec avec proxy Express:', {
+      message: proxyError.message,
+      status: proxyError.response?.status,
+      statusText: proxyError.response?.statusText,
+      data: proxyError.response?.data
+    })
     
     // Méthode 2: Essayer en direct (peut échouer à cause de CORS)
     try {
@@ -78,7 +108,37 @@ export async function generatePaymentTokenWithFallback(paymentData) {
       return response.data
       
     } catch (directError) {
-      console.error('❌ Échec en direct:', directError.message)
+      console.error('❌ Échec en direct:', {
+        message: directError.message,
+        code: directError.code,
+        status: directError.response?.status
+      })
+      
+      // Analyser le type d'erreur du proxy
+      if (proxyError.response?.status === 500) {
+        const errorData = proxyError.response.data
+        throw new Error(`
+🚨 Erreur du serveur proxy !
+
+Détails de l'erreur :
+- Code: ${errorData.code || 'Inconnu'}
+- Message: ${errorData.details || proxyError.message}
+- Timestamp: ${errorData.timestamp || 'N/A'}
+
+Solutions possibles :
+
+1. 🔄 Redémarrer le serveur :
+   - Arrêtez le serveur (Ctrl+C)
+   - Relancez avec: ./dev-vite.sh
+
+2. 🌐 Vérifier la connectivité réseau :
+   - Testez: curl -I https://itspgw.its-connect.net/Service.svc
+
+3. 🔧 Vérifier les logs du serveur pour plus de détails
+
+Erreur technique: ${proxyError.message}
+        `)
+      }
       
       // Si c'est une erreur CORS, donner des instructions
       if (directError.message.includes('CORS') || 
@@ -90,26 +150,37 @@ export async function generatePaymentTokenWithFallback(paymentData) {
 
 Solutions possibles :
 
-1. 🔄 Redémarrer le serveur de développement :
-   - Arrêtez le serveur (Ctrl+C)
-   - Relancez avec: npm run dev
+1. 🔄 Utiliser le serveur unifié (recommandé) :
+   - Arrêtez tous les serveurs (Ctrl+C)
+   - Lancez: ./dev-vite.sh
 
-2. 🌐 Utiliser un navigateur en mode développement :
+2. 🔄 Redémarrer le serveur de développement :
+   - Arrêtez le serveur (Ctrl+C)
+   - Relancez avec: npm run dev:full
+
+3. 🌐 Utiliser un navigateur en mode développement :
    - Chrome: google-chrome --disable-web-security --user-data-dir="/tmp/chrome_dev"
    - Firefox: Installer l'extension "CORS Everywhere"
 
-3. 🔧 Vérifier la configuration du proxy dans vite.config.js
-
-4. 🚀 Utiliser le serveur proxy séparé :
-   - Terminal 1: npm run proxy
-   - Terminal 2: npm run dev
+4. 🔧 Vérifier que le serveur proxy fonctionne :
+   - Testez: curl http://localhost:3001/api/health
 
 Erreur technique: ${directError.message}
         `)
       }
       
       // Autre type d'erreur
-      throw directError
+      throw new Error(`
+🚨 Erreur de communication !
+
+Erreur proxy: ${proxyError.message}
+Erreur directe: ${directError.message}
+
+Solutions :
+1. Vérifiez votre connexion internet
+2. Redémarrez le serveur avec: ./dev-vite.sh
+3. Contactez l'administrateur si le problème persiste
+      `)
     }
   }
 }
@@ -179,22 +250,44 @@ export async function testConnectivity() {
   const results = {
     proxy: { status: 'unknown', message: '', time: 0 },
     direct: { status: 'unknown', message: '', time: 0 },
+    health: { status: 'unknown', message: '', time: 0 },
     recommendations: []
   }
   
-  // Test du proxy
+  // Test du health check du serveur
   try {
     const startTime = Date.now()
-    await axios.get(PROXY_API_URL, { timeout: 5000 })
+    const response = await axios.get('/api/health', { timeout: 5000 })
+    results.health = {
+      status: 'success',
+      message: `Serveur Express accessible (${response.data.environment})`,
+      time: Date.now() - startTime
+    }
+  } catch (error) {
+    results.health = {
+      status: 'error',
+      message: error.message,
+      time: 0
+    }
+  }
+  
+  // Test du proxy ITS (avec une requête GET simple)
+  try {
+    const startTime = Date.now()
+    // Utiliser une requête GET simple pour tester la connectivité du proxy
+    await axios.get(PROXY_API_URL, { 
+      timeout: 10000,
+      validateStatus: (status) => status < 500 // Accepter les erreurs 4xx mais pas 5xx
+    })
     results.proxy = {
       status: 'success',
-      message: 'Proxy Vite accessible',
+      message: 'Proxy Express accessible',
       time: Date.now() - startTime
     }
   } catch (error) {
     results.proxy = {
       status: 'error',
-      message: error.message,
+      message: `${error.message} (Status: ${error.response?.status || 'N/A'})`,
       time: 0
     }
   }
@@ -202,7 +295,11 @@ export async function testConnectivity() {
   // Test direct (probablement échouera à cause de CORS)
   try {
     const startTime = Date.now()
-    await axios.get(DIRECT_API_URL, { timeout: 5000, withCredentials: false })
+    await axios.get(DIRECT_API_URL, { 
+      timeout: 5000, 
+      withCredentials: false,
+      validateStatus: (status) => status < 500
+    })
     results.direct = {
       status: 'success',
       message: 'API ITS accessible directement',
@@ -217,13 +314,18 @@ export async function testConnectivity() {
   }
   
   // Générer des recommandations
-  if (results.proxy.status === 'error' && results.direct.status === 'error') {
-    results.recommendations.push('Redémarrer le serveur de développement')
-    results.recommendations.push('Vérifier la connexion internet')
-    results.recommendations.push('Utiliser un navigateur en mode développement')
+  if (results.health.status === 'error') {
+    results.recommendations.push('Le serveur Express n\'est pas démarré - Lancez: ./dev-vite.sh')
+    results.recommendations.push('Vérifiez que le port 3001 n\'est pas utilisé par un autre processus')
+  } else if (results.proxy.status === 'error' && results.direct.status === 'error') {
+    results.recommendations.push('Problème de connectivité réseau - Vérifiez votre connexion internet')
+    results.recommendations.push('Le serveur ITS pourrait être temporairement indisponible')
+    results.recommendations.push('Redémarrer le serveur avec: ./dev-vite.sh')
   } else if (results.proxy.status === 'error') {
-    results.recommendations.push('Vérifier la configuration du proxy dans vite.config.js')
-    results.recommendations.push('Redémarrer le serveur de développement')
+    results.recommendations.push('Problème avec le proxy Express - Vérifiez les logs du serveur')
+    results.recommendations.push('Redémarrer le serveur avec: ./dev-vite.sh')
+  } else if (results.proxy.status === 'success') {
+    results.recommendations.push('✅ Proxy fonctionnel - Vous pouvez générer des tokens')
   }
   
   return results

@@ -12,21 +12,24 @@
     "server:dev": "nodemon server.js",
     "start": "NODE_ENV=production node server.js",
     "dev:full": "concurrently \"npm run server:dev\" \"npm run dev\"",
+    "dev:single": "nodemon server.js",
     "dev:local": "./start.sh",
     "proxy": "node server.js"
   },
   "dependencies": {
-    "vue": "^3.4.0",
     "axios": "^1.6.0",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "vue": "^3.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
-    "vite": "^5.0.0",
+    "concurrently": "^8.2.2",
     "http-proxy-middleware": "^2.0.0",
     "nodemon": "^3.0.1",
-    "concurrently": "^8.2.2"
+    "vite": "^5.4.19"
   },
   "keywords": [
     "vue3",

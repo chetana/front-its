@@ -99,6 +99,55 @@
             />
           </div>
 
+          <!-- URLs de redirection -->
+          <div class="form-group">
+            <label for="onCompletionURL">URL de Succès :</label>
+            <input 
+              type="url" 
+              id="onCompletionURL" 
+              v-model="formData.OnCompletionURL" 
+              placeholder="https://votre-domaine.com/payment/success"
+              class="form-input"
+            />
+            <small class="help-text">URL de redirection après un paiement réussi</small>
+          </div>
+
+          <div class="form-group">
+            <label for="onErrorURL">URL d'Erreur :</label>
+            <input 
+              type="url" 
+              id="onErrorURL" 
+              v-model="formData.OnErrorURL" 
+              placeholder="https://votre-domaine.com/payment/error"
+              class="form-input"
+            />
+            <small class="help-text">URL de redirection en cas d'erreur de paiement</small>
+          </div>
+
+          <div class="form-group">
+            <label for="postbackResultURL">URL de Callback :</label>
+            <input 
+              type="url" 
+              id="postbackResultURL" 
+              v-model="formData.PostbackResultURL" 
+              placeholder="https://votre-domaine.com/payment/callback"
+              class="form-input"
+            />
+            <small class="help-text">URL pour recevoir les notifications de résultat (webhook)</small>
+          </div>
+
+          <div class="form-group">
+            <label for="postFailure">URL d'Échec Post :</label>
+            <input 
+              type="url" 
+              id="postFailure" 
+              v-model="formData.PostFailure" 
+              placeholder="https://votre-domaine.com/payment/post-failure"
+              class="form-input"
+            />
+            <small class="help-text">URL pour les échecs de notification (optionnel)</small>
+          </div>
+
           <div class="button-group">
             <button 
               type="submit" 
@@ -115,6 +164,15 @@
               class="test-btn"
             >
               🔍 Tester la Connectivité
+            </button>
+            
+            <button 
+              type="button" 
+              @click="autoFillUrls" 
+              :disabled="loading"
+              class="auto-fill-btn"
+            >
+              🔗 Remplir URLs Auto
             </button>
           </div>
         </form>
@@ -178,14 +236,105 @@
           </div>
         </div>
       </div>
+
+      <!-- Section des callbacks de paiement -->
+      <div class="card callback-section">
+        <div class="callback-header">
+          <h3>📡 Callbacks de Paiement</h3>
+          <div class="callback-controls">
+            <button 
+              @click="testCallbackEndpoint('success')" 
+              class="test-callback-btn success"
+              :disabled="loading"
+            >
+              ✅ Test Succès
+            </button>
+            <button 
+              @click="testCallbackEndpoint('error')" 
+              class="test-callback-btn error"
+              :disabled="loading"
+            >
+              ❌ Test Erreur
+            </button>
+            <button 
+              @click="testCallbackEndpoint('callback')" 
+              class="test-callback-btn info"
+              :disabled="loading"
+            >
+              🔔 Test Callback
+            </button>
+            <button 
+              @click="clearCallbacks" 
+              class="clear-callbacks-btn"
+              :disabled="loading"
+            >
+              🗑️ Vider
+            </button>
+          </div>
+        </div>
+
+        <div v-if="paymentCallbacks.length === 0" class="no-callbacks">
+          <p>🔇 Aucun callback reçu pour le moment</p>
+          <small>Les callbacks apparaîtront ici en temps réel lorsque ITS contactera les URLs de redirection</small>
+        </div>
+
+        <div v-else class="callbacks-list">
+          <div 
+            v-for="callback in paymentCallbacks" 
+            :key="callback.id" 
+            :class="['callback-item', callback.statusColor]"
+          >
+            <div class="callback-header-item">
+              <span class="callback-icon">{{ callback.statusIcon }}</span>
+              <span class="callback-type">{{ callback.type.toUpperCase() }}</span>
+              <span class="callback-time">{{ callback.displayTime }}</span>
+              <span class="callback-method">{{ callback.method }}</span>
+            </div>
+            
+            <div class="callback-url">
+              <strong>URL:</strong> {{ callback.url }}
+            </div>
+            
+            <div v-if="callback.hasData" class="callback-data">
+              <div v-if="Object.keys(callback.query || {}).length > 0" class="callback-query">
+                <strong>Query Parameters:</strong>
+                <pre>{{ JSON.stringify(callback.query, null, 2) }}</pre>
+              </div>
+              
+              <div v-if="Object.keys(callback.body || {}).length > 0" class="callback-body">
+                <strong>Body:</strong>
+                <pre>{{ JSON.stringify(callback.body, null, 2) }}</pre>
+              </div>
+            </div>
+            
+            <div class="callback-meta">
+              <small>
+                IP: {{ callback.ip || 'N/A' }} | 
+                User-Agent: {{ callback.headers['user-agent'] || 'N/A' }}
+              </small>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 </template>
 
 <script>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { generatePaymentTokenWithFallback as generatePaymentToken, parseTokenResponse, testConnectivity } from './services/corsService'
 import { validatePaymentData, buildPaymentUrl } from './services/itsService'
+import { 
+  initializeSocket, 
+  onPaymentCallback, 
+  onCallbacksCleared, 
+  getPaymentUrls, 
+  getPaymentCallbacks, 
+  clearPaymentCallbacks, 
+  testCallback, 
+  formatCallback, 
+  disconnectSocket 
+} from './services/callbackService'
 
 export default {
   name: 'App',
@@ -196,6 +345,7 @@ export default {
     const paymentToken = ref(null)
     const tokenResponse = ref(null)
     const debugLogs = ref([])
+    const paymentCallbacks = ref([])
 
     // Données du formulaire avec valeurs par défaut
     const formData = ref({
@@ -206,7 +356,12 @@ export default {
       PageLanguage: 'FR',
       PageLocale: 'FR',
       Reference: 'TEST-ORDER-006',
-      SupplierID: 'djust_test'
+      SupplierID: 'djust_test',
+      // URLs de redirection (optionnelles)
+      OnCompletionURL: '',
+      OnErrorURL: '',
+      PostbackResultURL: '',
+      PostFailure: ''
     })
 
     // URL de paiement calculée
@@ -231,9 +386,18 @@ export default {
       
       try {
         addLog('INFO', 'Début de la génération du token...')
+        addLog('INFO', '⏳ Cela peut prendre jusqu\'à 60 secondes...')
         addLog('DEBUG', `Données envoyées: ${JSON.stringify(formData.value, null, 2)}`)
         
+        // Ajouter un indicateur de progression
+        let progressInterval = setInterval(() => {
+          addLog('DEBUG', '⏳ Requête en cours de traitement...')
+        }, 10000) // Toutes les 10 secondes
+        
         const response = await generatePaymentToken(formData.value)
+        
+        clearInterval(progressInterval)
+        
         addLog('INFO', 'Réponse reçue du serveur ITS')
         addLog('DEBUG', `Réponse brute: ${response}`)
         
@@ -250,6 +414,16 @@ export default {
       } catch (err) {
         error.value = err.message
         addLog('ERROR', `Erreur lors de la génération: ${err.message}`)
+        
+        // Ajouter des conseils spécifiques selon le type d'erreur
+        if (err.message.includes('timeout')) {
+          addLog('INFO', '💡 Le serveur ITS peut être lent. Essayez de relancer.')
+        } else if (err.message.includes('Network Error')) {
+          addLog('INFO', '💡 Vérifiez votre connexion internet.')
+        } else if (err.message.includes('CORS')) {
+          addLog('INFO', '💡 Redémarrez le serveur avec: ./dev-simple.sh')
+        }
+        
         console.error('Erreur:', err)
       } finally {
         loading.value = false
@@ -264,6 +438,9 @@ export default {
       try {
         addLog('INFO', 'Test de connectivité en cours...')
         const results = await testConnectivity()
+        
+        addLog('INFO', `Test serveur: ${results.health.status}`)
+        addLog('DEBUG', `Serveur: ${results.health.message}`)
         
         addLog('INFO', `Test proxy: ${results.proxy.status}`)
         addLog('DEBUG', `Proxy: ${results.proxy.message}`)
@@ -302,6 +479,90 @@ export default {
       addLog('INFO', 'Formulaire réinitialisé')
     }
 
+    // Fonction pour remplir automatiquement les URLs
+    const autoFillUrls = async () => {
+      try {
+        addLog('INFO', 'Récupération des URLs automatiques...')
+        const urlData = await getPaymentUrls()
+        
+        formData.value.OnCompletionURL = urlData.urls.OnCompletionURL
+        formData.value.OnErrorURL = urlData.urls.OnErrorURL
+        formData.value.PostbackResultURL = urlData.urls.PostbackResultURL
+        formData.value.PostFailure = urlData.urls.PostFailure
+        
+        addLog('SUCCESS', `URLs remplies automatiquement depuis ${urlData.baseUrl}`)
+      } catch (err) {
+        addLog('ERROR', `Erreur lors du remplissage automatique: ${err.message}`)
+      }
+    }
+
+    // Fonction pour tester un endpoint de callback
+    const testCallbackEndpoint = async (type) => {
+      try {
+        addLog('INFO', `Test du callback ${type}...`)
+        const result = await testCallback(type, {
+          testData: 'Test manuel depuis l\'interface',
+          reference: formData.value.Reference,
+          amount: formData.value.Amount
+        })
+        addLog('SUCCESS', `Test ${type} réussi: ${result.message}`)
+      } catch (err) {
+        addLog('ERROR', `Erreur test ${type}: ${err.message}`)
+      }
+    }
+
+    // Fonction pour vider les callbacks
+    const clearCallbacks = async () => {
+      try {
+        await clearPaymentCallbacks()
+        paymentCallbacks.value = []
+        addLog('INFO', 'Callbacks supprimés')
+      } catch (err) {
+        addLog('ERROR', `Erreur suppression callbacks: ${err.message}`)
+      }
+    }
+
+    // Fonction pour charger les callbacks existants
+    const loadCallbacks = async () => {
+      try {
+        const callbacks = await getPaymentCallbacks()
+        paymentCallbacks.value = callbacks.map(formatCallback)
+      } catch (err) {
+        console.error('Erreur chargement callbacks:', err)
+      }
+    }
+
+    // Lifecycle hooks
+    onMounted(async () => {
+      // Initialiser WebSocket
+      initializeSocket()
+      
+      // Écouter les nouveaux callbacks
+      onPaymentCallback((callback) => {
+        const formattedCallback = formatCallback(callback)
+        paymentCallbacks.value.unshift(formattedCallback)
+        
+        // Garder seulement les 20 derniers
+        if (paymentCallbacks.value.length > 20) {
+          paymentCallbacks.value = paymentCallbacks.value.slice(0, 20)
+        }
+        
+        addLog('INFO', `Callback ${callback.type} reçu: ${callback.url}`)
+      })
+      
+      // Écouter la suppression des callbacks
+      onCallbacksCleared(() => {
+        paymentCallbacks.value = []
+      })
+      
+      // Charger les callbacks existants
+      await loadCallbacks()
+    })
+
+    onUnmounted(() => {
+      disconnectSocket()
+    })
+
     return {
       formData,
       loading,
@@ -310,9 +571,13 @@ export default {
       tokenResponse,
       paymentUrl,
       debugLogs,
+      paymentCallbacks,
       generateToken,
       runConnectivityTest,
-      resetForm
+      resetForm,
+      autoFillUrls,
+      testCallbackEndpoint,
+      clearCallbacks
     }
   }
 }
@@ -583,6 +848,219 @@ export default {
   word-break: break-word;
 }
 
+/* Styles pour le bouton de remplissage automatique */
+.auto-fill-btn {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.auto-fill-btn:hover:not(:disabled) {
+  background: #218838;
+}
+
+.auto-fill-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+/* Styles pour la section des callbacks */
+.callback-section {
+  background: #f8f9fa;
+  border-left: 4px solid #28a745;
+}
+
+.callback-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.callback-controls {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.test-callback-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.test-callback-btn.success {
+  background: #28a745;
+  color: white;
+}
+
+.test-callback-btn.success:hover:not(:disabled) {
+  background: #218838;
+}
+
+.test-callback-btn.error {
+  background: #dc3545;
+  color: white;
+}
+
+.test-callback-btn.error:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.test-callback-btn.info {
+  background: #17a2b8;
+  color: white;
+}
+
+.test-callback-btn.info:hover:not(:disabled) {
+  background: #138496;
+}
+
+.clear-callbacks-btn {
+  background: #6c757d;
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.clear-callbacks-btn:hover:not(:disabled) {
+  background: #5a6268;
+}
+
+.test-callback-btn:disabled,
+.clear-callbacks-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.no-callbacks {
+  text-align: center;
+  padding: 2rem;
+  color: #6c757d;
+}
+
+.no-callbacks p {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.no-callbacks small {
+  font-size: 0.875rem;
+}
+
+.callbacks-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.callback-item {
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  transition: all 0.3s ease;
+}
+
+.callback-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.callback-item.success {
+  border-left: 4px solid #28a745;
+}
+
+.callback-item.error {
+  border-left: 4px solid #dc3545;
+}
+
+.callback-item.info {
+  border-left: 4px solid #17a2b8;
+}
+
+.callback-item.warning {
+  border-left: 4px solid #ffc107;
+}
+
+.callback-header-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.callback-icon {
+  font-size: 1.2rem;
+}
+
+.callback-type {
+  font-weight: bold;
+  color: #333;
+  min-width: 80px;
+}
+
+.callback-time {
+  color: #6c757d;
+  font-size: 0.875rem;
+}
+
+.callback-method {
+  background: #e9ecef;
+  color: #495057;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.callback-url {
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+  word-break: break-all;
+}
+
+.callback-data {
+  margin: 0.5rem 0;
+}
+
+.callback-query,
+.callback-body {
+  margin: 0.5rem 0;
+}
+
+.callback-data pre {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  overflow-x: auto;
+  margin: 0.25rem 0;
+}
+
+.callback-meta {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #e9ecef;
+  color: #6c757d;
+  font-size: 0.75rem;
+}
+
 @media (max-width: 768px) {
   .header {
     padding: 1rem;
@@ -602,6 +1080,27 @@ export default {
   
   .card {
     padding: 1rem;
+  }
+  
+  .callback-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .callback-controls {
+    justify-content: center;
+  }
+  
+  .callback-header-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .test-callback-btn,
+  .clear-callbacks-btn {
+    flex: 1;
+    min-width: 120px;
   }
 }
 </style>

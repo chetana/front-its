@@ -53,7 +53,12 @@ export default {
       PageLanguage: 'FR',
       PageLocale: 'FR',
       Reference: 'TEST-ORDER-006',
-      SupplierID: 'djust_test'
+      SupplierID: 'djust_test',
+      // URLs de redirection pour les tests
+      OnCompletionURL: 'https://example.com/payment/success',
+      OnErrorURL: 'https://example.com/payment/error',
+      PostbackResultURL: 'https://example.com/payment/callback',
+      PostFailure: 'https://example.com/payment/post-failure'
     }
 
     const sampleXmlResponse = `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
@@ -91,6 +96,27 @@ export default {
     }
 
     const generateSoapXml = (paymentData) => {
+      // Construire les champs URL optionnels
+      const urlFields = []
+      
+      if (paymentData.OnCompletionURL && paymentData.OnCompletionURL.trim()) {
+        urlFields.push(`                <its:OnCompletionURL>${paymentData.OnCompletionURL}</its:OnCompletionURL>`)
+      }
+      
+      if (paymentData.OnErrorURL && paymentData.OnErrorURL.trim()) {
+        urlFields.push(`                <its:OnErrorURL>${paymentData.OnErrorURL}</its:OnErrorURL>`)
+      }
+      
+      if (paymentData.PostbackResultURL && paymentData.PostbackResultURL.trim()) {
+        urlFields.push(`                <its:PostbackResultURL>${paymentData.PostbackResultURL}</its:PostbackResultURL>`)
+      }
+      
+      if (paymentData.PostFailure && paymentData.PostFailure.trim()) {
+        urlFields.push(`                <its:PostFailure>${paymentData.PostFailure}</its:PostFailure>`)
+      }
+      
+      const urlFieldsXml = urlFields.length > 0 ? '\n' + urlFields.join('\n') : ''
+
       return `<?xml version="1.0" encoding="utf-8"?>
 <x:Envelope xmlns:x="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/" xmlns:its="http://schemas.datacontract.org/2004/07/ITS.PaymentGatewayDataContract">
     <x:Body>
@@ -103,7 +129,7 @@ export default {
                 <its:PageLanguage>${paymentData.PageLanguage}</its:PageLanguage>
                 <its:PageLocale>${paymentData.PageLocale}</its:PageLocale>
                 <its:Reference>${paymentData.Reference}</its:Reference>
-                <its:SupplierID>${paymentData.SupplierID}</its:SupplierID>
+                <its:SupplierID>${paymentData.SupplierID}</its:SupplierID>${urlFieldsXml}
             </tem:objPaypageRequestResponse>
         </tem:GeneratePaypageToken>
     </x:Body>
