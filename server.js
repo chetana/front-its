@@ -95,6 +95,12 @@ const itsProxyOptions = {
       contentLength: req.get('content-length')
     })
     
+    // Logger le body de la requête si disponible
+    if (req.body) {
+      console.log('📋 Request body being sent to ITS:')
+      console.log(req.body)
+    }
+    
     // Conserver les headers originaux et ajouter seulement ceux nécessaires
     if (!proxyReq.getHeader('Content-Type')) {
       proxyReq.setHeader('Content-Type', 'text/xml; charset=utf-8')
@@ -306,8 +312,7 @@ app.get('/api/payment-urls', (req, res) => {
     urls: {
       OnCompletionURL: `${baseUrl}/payment/success`,
       OnErrorURL: `${baseUrl}/payment/error`,
-      PostbackResultURL: `${baseUrl}/payment/callback`,
-      PostFailure: `${baseUrl}/payment/post-failure`
+      PostbackResultURL: `${baseUrl}/payment/callback`
     }
   })
 })

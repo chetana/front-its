@@ -57,8 +57,7 @@ export default {
       // URLs de redirection pour les tests
       OnCompletionURL: 'https://example.com/payment/success',
       OnErrorURL: 'https://example.com/payment/error',
-      PostbackResultURL: 'https://example.com/payment/callback',
-      PostFailure: 'https://example.com/payment/post-failure'
+      PostbackResultURL: 'https://example.com/payment/callback'
     }
 
     const sampleXmlResponse = `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
@@ -109,10 +108,6 @@ export default {
       
       if (paymentData.PostbackResultURL && paymentData.PostbackResultURL.trim()) {
         urlFields.push(`                <its:PostbackResultURL>${paymentData.PostbackResultURL}</its:PostbackResultURL>`)
-      }
-      
-      if (paymentData.PostFailure && paymentData.PostFailure.trim()) {
-        urlFields.push(`                <its:PostFailure>${paymentData.PostFailure}</its:PostFailure>`)
       }
       
       const urlFieldsXml = urlFields.length > 0 ? '\n' + urlFields.join('\n') : ''

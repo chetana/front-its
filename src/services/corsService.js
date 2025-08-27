@@ -11,28 +11,8 @@ const ITS_SOAP_ACTION = 'http://tempuri.org/IPaymentGateway/GeneratePaypageToken
  * @returns {string} - XML SOAP formaté
  */
 function generateSoapXml(paymentData) {
-  // Construire les champs URL optionnels
-  const urlFields = []
-  
-  if (paymentData.OnCompletionURL && paymentData.OnCompletionURL.trim()) {
-    urlFields.push(`                <its:OnCompletionURL>${paymentData.OnCompletionURL}</its:OnCompletionURL>`)
-  }
-  
-  if (paymentData.OnErrorURL && paymentData.OnErrorURL.trim()) {
-    urlFields.push(`                <its:OnErrorURL>${paymentData.OnErrorURL}</its:OnErrorURL>`)
-  }
-  
-  if (paymentData.PostbackResultURL && paymentData.PostbackResultURL.trim()) {
-    urlFields.push(`                <its:PostbackResultURL>${paymentData.PostbackResultURL}</its:PostbackResultURL>`)
-  }
-  
-  if (paymentData.PostFailure && paymentData.PostFailure.trim()) {
-    urlFields.push(`                <its:PostFailure>${paymentData.PostFailure}</its:PostFailure>`)
-  }
-  
-  const urlFieldsXml = urlFields.length > 0 ? '\n' + urlFields.join('\n') : ''
-
-  return `<?xml version="1.0" encoding="utf-8"?>
+  // Construire le XML avec l'ordre spécifié des champs
+  let xmlContent = `<?xml version="1.0" encoding="utf-8"?>
 <x:Envelope xmlns:x="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/" xmlns:its="http://schemas.datacontract.org/2004/07/ITS.PaymentGatewayDataContract">
     <x:Body>
         <tem:GeneratePaypageToken>
@@ -40,15 +20,48 @@ function generateSoapXml(paymentData) {
                 <its:Amount>${paymentData.Amount}</its:Amount>
                 <its:CountryCode>${paymentData.CountryCode}</its:CountryCode>
                 <its:CurrencyCode>${paymentData.CurrencyCode}</its:CurrencyCode>
-                <its:CV2AVSControl>${paymentData.CV2AVSControl}</its:CV2AVSControl>
+                <its:CV2AVSControl>${paymentData.CV2AVSControl}</its:CV2AVSControl>`
+
+  // Ajouter OnCompletionURL si présent
+  if (paymentData.OnCompletionURL && paymentData.OnCompletionURL.trim()) {
+    xmlContent += `
+                <its:OnCompletionURL>${paymentData.OnCompletionURL}</its:OnCompletionURL>`
+  }
+
+  // Ajouter OnErrorURL si présent
+  if (paymentData.OnErrorURL && paymentData.OnErrorURL.trim()) {
+    xmlContent += `
+                <its:OnErrorURL>${paymentData.OnErrorURL}</its:OnErrorURL>`
+  }
+
+  // Ajouter PageLanguage et PageLocale
+  xmlContent += `
                 <its:PageLanguage>${paymentData.PageLanguage}</its:PageLanguage>
-                <its:PageLocale>${paymentData.PageLocale}</its:PageLocale>
+                <its:PageLocale>${paymentData.PageLocale}</its:PageLocale>`
+
+  // Ajouter PostbackResultURL si présent
+  if (paymentData.PostbackResultURL && paymentData.PostbackResultURL.trim()) {
+    xmlContent += `
+                <its:PostbackResultURL>${paymentData.PostbackResultURL}</its:PostbackResultURL>`
+  }
+
+  // Ajouter Reference et SupplierID
+  xmlContent += `
                 <its:Reference>${paymentData.Reference}</its:Reference>
-                <its:SupplierID>${paymentData.SupplierID}</its:SupplierID>${urlFieldsXml}
+                <its:SupplierID>${paymentData.SupplierID}</its:SupplierID>`
+
+  // Fermer les balises
+  xmlContent += `
             </tem:objPaypageRequestResponse>
         </tem:GeneratePaypageToken>
     </x:Body>
 </x:Envelope>`
+
+  // Log détaillé pour debug
+  console.log('🔍 XML généré avec ordre des champs (corsService):')
+  console.log(xmlContent)
+  
+  return xmlContent
 }
 
 /**
@@ -57,7 +70,19 @@ function generateSoapXml(paymentData) {
  * @returns {Promise<string>} - Réponse XML du serveur
  */
 export async function generatePaymentTokenWithFallback(paymentData) {
+  // Log des données reçues AVANT génération XML
+  console.log('🔍 DEBUT - Données reçues pour génération token:')
+  console.log('OnCompletionURL:', paymentData.OnCompletionURL)
+  console.log('OnErrorURL:', paymentData.OnErrorURL) 
+  console.log('PostbackResultURL:', paymentData.PostbackResultURL)
+  console.log('Toutes les données:', paymentData)
+  
   const soapXml = generateSoapXml(paymentData)
+  
+  // Log complet du XML généré côté client
+  console.log('🔍 Données envoyées à ITS par le proxy - XML COMPLET:')
+  console.log(soapXml)
+  console.log('🔍 Fin du XML envoyé à ITS')
   
   // Configuration de base
   const baseConfig = {
@@ -220,8 +245,11 @@ export function parseTokenResponse(xmlResponse) {
       Amount: parseInt(getElementValue('Amount')) || 0,
       CountryCode: getElementValue('CountryCode') || '',
       CurrencyCode: getElementValue('CurrencyCode') || '',
+      OnCompletionURL: getElementValue('OnCompletionURL') || '',
+      OnErrorURL: getElementValue('OnErrorURL') || '',
       PageLanguage: getElementValue('PageLanguage') || '',
       PageLocale: getElementValue('PageLocale') || '',
+      PostbackResultURL: getElementValue('PostbackResultURL') || '',
       Reference: getElementValue('Reference') || '',
       ResultDescription: getElementValue('ResultDescription') || '',
       SupplierID: getElementValue('SupplierID') || '',

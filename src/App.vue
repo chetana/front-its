@@ -136,17 +136,7 @@
             <small class="help-text">URL pour recevoir les notifications de résultat (webhook)</small>
           </div>
 
-          <div class="form-group">
-            <label for="postFailure">URL d'Échec Post :</label>
-            <input 
-              type="url" 
-              id="postFailure" 
-              v-model="formData.PostFailure" 
-              placeholder="https://votre-domaine.com/payment/post-failure"
-              class="form-input"
-            />
-            <small class="help-text">URL pour les échecs de notification (optionnel)</small>
-          </div>
+
 
           <div class="button-group">
             <button 
@@ -360,8 +350,7 @@ export default {
       // URLs de redirection (optionnelles)
       OnCompletionURL: '',
       OnErrorURL: '',
-      PostbackResultURL: '',
-      PostFailure: ''
+      PostbackResultURL: ''
     })
 
     // URL de paiement calculée
@@ -488,7 +477,6 @@ export default {
         formData.value.OnCompletionURL = urlData.urls.OnCompletionURL
         formData.value.OnErrorURL = urlData.urls.OnErrorURL
         formData.value.PostbackResultURL = urlData.urls.PostbackResultURL
-        formData.value.PostFailure = urlData.urls.PostFailure
         
         addLog('SUCCESS', `URLs remplies automatiquement depuis ${urlData.baseUrl}`)
       } catch (err) {
@@ -536,6 +524,17 @@ export default {
     onMounted(async () => {
       // Initialiser WebSocket
       initializeSocket()
+      
+      // Remplir automatiquement les URLs au démarrage
+      try {
+        const urlData = await getPaymentUrls()
+        formData.value.OnCompletionURL = urlData.urls.OnCompletionURL
+        formData.value.OnErrorURL = urlData.urls.OnErrorURL
+        formData.value.PostbackResultURL = urlData.urls.PostbackResultURL
+        addLog('INFO', `URLs de callback remplies automatiquement depuis ${urlData.baseUrl}`)
+      } catch (err) {
+        addLog('WARNING', `Impossible de récupérer les URLs automatiquement: ${err.message}`)
+      }
       
       // Écouter les nouveaux callbacks
       onPaymentCallback((callback) => {

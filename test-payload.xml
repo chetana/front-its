@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<x:Envelope xmlns:x="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/" xmlns:its="http://schemas.datacontract.org/2004/07/ITS.PaymentGatewayDataContract">
+    <x:Body>
+        <tem:GeneratePaypageToken>
+            <tem:objPaypageRequestResponse>
+                <its:Amount>12000</its:Amount>
+                <its:CountryCode>FRA</its:CountryCode>
+                <its:CurrencyCode>EUR</its:CurrencyCode>
+                <its:CV2AVSControl>C</its:CV2AVSControl>
+                <its:OnCompletionURL>https://front-its-267131866578.europe-west1.run.app/payment/success</its:OnCompletionURL>
+                <its:OnErrorURL>https://front-its-267131866578.europe-west1.run.app/payment/error</its:OnErrorURL>
+                <its:PageLanguage>FR</its:PageLanguage>
+                <its:PageLocale>FR</its:PageLocale>
+                <its:PostbackResultURL>https://front-its-267131866578.europe-west1.run.app/payment/callback</its:PostbackResultURL>
+                <its:Reference>TEST-ORDER-014</its:Reference>
+                <its:SupplierID>djust_test</its:SupplierID>
+            </tem:objPaypageRequestResponse>
+        </tem:GeneratePaypageToken>
+    </x:Body>
+</x:Envelope>

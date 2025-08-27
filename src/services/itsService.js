@@ -5,52 +5,6 @@ const ITS_API_URL = '/api/its' // Utilise le proxy Vite
 const ITS_SOAP_ACTION = 'http://tempuri.org/IPaymentGateway/GeneratePaypageToken'
 
 /**
- * Génère le XML SOAP pour la requête de génération de token
- * @param {Object} paymentData - Données de paiement
- * @returns {string} - XML SOAP formaté
- */
-function generateSoapXml(paymentData) {
-  // Construire les champs URL optionnels
-  const urlFields = []
-  
-  if (paymentData.OnCompletionURL && paymentData.OnCompletionURL.trim()) {
-    urlFields.push(`                <its:OnCompletionURL>${paymentData.OnCompletionURL}</its:OnCompletionURL>`)
-  }
-  
-  if (paymentData.OnErrorURL && paymentData.OnErrorURL.trim()) {
-    urlFields.push(`                <its:OnErrorURL>${paymentData.OnErrorURL}</its:OnErrorURL>`)
-  }
-  
-  if (paymentData.PostbackResultURL && paymentData.PostbackResultURL.trim()) {
-    urlFields.push(`                <its:PostbackResultURL>${paymentData.PostbackResultURL}</its:PostbackResultURL>`)
-  }
-  
-  if (paymentData.PostFailure && paymentData.PostFailure.trim()) {
-    urlFields.push(`                <its:PostFailure>${paymentData.PostFailure}</its:PostFailure>`)
-  }
-  
-  const urlFieldsXml = urlFields.length > 0 ? '\n' + urlFields.join('\n') : ''
-
-  return `<?xml version="1.0" encoding="utf-8"?>
-<x:Envelope xmlns:x="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/" xmlns:its="http://schemas.datacontract.org/2004/07/ITS.PaymentGatewayDataContract">
-    <x:Body>
-        <tem:GeneratePaypageToken>
-            <tem:objPaypageRequestResponse>
-                <its:Amount>${paymentData.Amount}</its:Amount>
-                <its:CountryCode>${paymentData.CountryCode}</its:CountryCode>
-                <its:CurrencyCode>${paymentData.CurrencyCode}</its:CurrencyCode>
-                <its:CV2AVSControl>${paymentData.CV2AVSControl}</its:CV2AVSControl>
-                <its:PageLanguage>${paymentData.PageLanguage}</its:PageLanguage>
-                <its:PageLocale>${paymentData.PageLocale}</its:PageLocale>
-                <its:Reference>${paymentData.Reference}</its:Reference>
-                <its:SupplierID>${paymentData.SupplierID}</its:SupplierID>${urlFieldsXml}
-            </tem:objPaypageRequestResponse>
-        </tem:GeneratePaypageToken>
-    </x:Body>
-</x:Envelope>`
-}
-
-/**
  * Parse la réponse XML SOAP pour extraire les données du token
  * @param {string} xmlResponse - Réponse XML du serveur
  * @returns {Object} - Objet contenant les données parsées
@@ -114,104 +68,6 @@ export function parseTokenResponse(xmlResponse) {
 }
 
 /**
- * Génère un token de paiement via l'API ITS
- * @param {Object} paymentData - Données de paiement
- * @returns {Promise<string>} - Réponse XML du serveur
- */
-export async function generatePaymentToken(paymentData) {
-  try {
-    // Valider les données d'entrée
-    if (!paymentData || typeof paymentData !== 'object') {
-      throw new Error('Données de paiement invalides')
-    }
-    
-    const requiredFields = ['Amount', 'CountryCode', 'CurrencyCode', 'Reference', 'SupplierID']
-    for (const field of requiredFields) {
-      if (!paymentData[field]) {
-        throw new Error(`Le champ ${field} est requis`)
-      }
-    }
-    
-    // Générer le XML SOAP
-    const soapXml = generateSoapXml(paymentData)
-    console.log('SOAP XML généré:', soapXml)
-    
-    // Configuration de la requête
-    const config = {
-      method: 'POST',
-      url: ITS_API_URL,
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': ITS_SOAP_ACTION,
-        // Ajouter des headers pour éviter les problèmes CORS
-        'Accept': '*/*',
-        'Cache-Control': 'no-cache'
-      },
-      data: soapXml,
-      timeout: 30000, // 30 secondes de timeout
-      // Configuration pour gérer les erreurs CORS
-      withCredentials: false
-    }
-    
-    console.log('Configuration de la requête:', config)
-    
-    // Effectuer la requête
-    const response = await axios(config)
-    
-    console.log('Réponse reçue:', {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-      data: response.data
-    })
-    
-    // Vérifier le statut de la réponse
-    if (response.status !== 200) {
-      throw new Error(`Erreur HTTP ${response.status}: ${response.statusText}`)
-    }
-    
-    // Vérifier que nous avons bien reçu du XML
-    if (!response.data || typeof response.data !== 'string') {
-      throw new Error('Réponse invalide du serveur (pas de données XML)')
-    }
-    
-    return response.data
-    
-  } catch (error) {
-    console.error('Erreur lors de la génération du token:', error)
-    
-    // Gérer les différents types d'erreurs
-    if (error.code === 'ECONNABORTED') {
-      throw new Error('Timeout: Le serveur ITS ne répond pas dans les temps')
-    } else if (error.response) {
-      // Erreur HTTP avec réponse du serveur
-      const status = error.response.status
-      const statusText = error.response.statusText
-      const data = error.response.data
-      
-      console.error('Erreur HTTP:', { status, statusText, data })
-      
-      if (status === 404) {
-        throw new Error('Service ITS non trouvé (404). Vérifiez l\'URL de l\'API.')
-      } else if (status === 500) {
-        throw new Error('Erreur interne du serveur ITS (500). Vérifiez les données envoyées.')
-      } else if (status >= 400 && status < 500) {
-        throw new Error(`Erreur client (${status}): ${statusText}. Vérifiez les paramètres de la requête.`)
-      } else {
-        throw new Error(`Erreur serveur (${status}): ${statusText}`)
-      }
-    } else if (error.request) {
-      // Erreur réseau (pas de réponse)
-      console.error('Erreur réseau:', error.request)
-      throw new Error('Erreur réseau: Impossible de contacter le serveur ITS. Vérifiez votre connexion internet.')
-    } else {
-      // Autre erreur
-      throw new Error(`Erreur inattendue: ${error.message}`)
-    }
-  }
-}
-
-/**
  * Construit l'URL de paiement ITS
  * @param {string} supplierID - ID du fournisseur
  * @param {string} token - Token de paiement
@@ -268,7 +124,7 @@ export function validatePaymentData(paymentData) {
   }
   
   // Validation des URLs (optionnelles)
-  const urlFields = ['OnCompletionURL', 'OnErrorURL', 'PostbackResultURL', 'PostFailure']
+  const urlFields = ['OnCompletionURL', 'OnErrorURL', 'PostbackResultURL']
   urlFields.forEach(field => {
     if (paymentData[field] && paymentData[field].trim()) {
       try {
